@@ -48,7 +48,7 @@ function Post({ id, username, userImg, img, caption }) {
 
       {/** input box for comment */}
       <form className="flex items-center p-4">
-        <EmojiHappyIcon className="h-7" />
+        <EmojiHappyIcon className="h-7 cursor-pointer" />
         <input
           className="border-none flex-1 focus:ring-0"
           placeholder="Add a comment..."
