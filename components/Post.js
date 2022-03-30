@@ -18,6 +18,9 @@ import {
   onSnapshot,
   query,
   orderBy,
+  setDoc,
+  doc,
+  deleteDoc,
 } from "firebase/firestore";
 import moment from "moment";
 
@@ -25,6 +28,8 @@ function Post({ id, username, userImg, img, caption }) {
   const { data: session } = useSession();
   const [comment, setComment] = useState("");
   const [listComments, setListComments] = useState([]);
+  const [likes, setLikes] = useState([]);
+  const [hasLiked, setHasLiked] = useState(false);
 
   useEffect(
     () =>
@@ -35,17 +40,48 @@ function Post({ id, username, userImg, img, caption }) {
         ),
         (snapshot) => setListComments(snapshot.docs)
       ),
-    [db]
+    [db, id]
   );
 
-  const sendComment = (e) => {
+  useEffect(
+    () =>
+      onSnapshot(query(collection(db, "posts", id, "likes")), (snapshot) =>
+        setLikes(snapshot.docs)
+      ),
+    [db, id]
+  );
+
+  useEffect(
+    () =>
+      setHasLiked(
+        likes.findIndex((like) => like.id === session?.user?.uid) !== -1
+      ),
+    [likes]
+  );
+
+  // console.log(hasLiked);
+
+  const likePost = async () => {
+    //if like -> unlike vice versa
+
+    if (hasLiked) {
+      console.log("dislike post");
+      await deleteDoc(doc(db, "posts", id, "likes", session.user.uid));
+    } else {
+      await setDoc(doc(db, "posts", id, "likes", session.user.uid), {
+        username: session.user.username,
+      });
+    }
+  };
+
+  const sendComment = async (e) => {
     e.preventDefault();
 
     const commentToSend = comment;
     setComment("");
 
     //firestore
-    addDoc(collection(db, "posts", id, "comments"), {
+    await addDoc(collection(db, "posts", id, "comments"), {
       comment: commentToSend,
       username: session.user.username,
       userImage: session.user.image,
@@ -73,7 +109,14 @@ function Post({ id, username, userImg, img, caption }) {
       {session && (
         <div className="flex justify-between px-4 pt-4">
           <div className="flex space-x-4">
-            <HeartIcon className="btn" />
+            {!hasLiked ? (
+              <HeartIcon onClick={likePost} className="btn" />
+            ) : (
+              <HeartIconFilled
+                onClick={likePost}
+                className="btn !text-red-600"
+              />
+            )}
             <ChatIcon className="btn" />
             <PaperAirplaneIcon className="btn" />
           </div>
@@ -83,6 +126,7 @@ function Post({ id, username, userImg, img, caption }) {
 
       {/** captions */}
       <div className="p-5 truncate">
+        {likes.length > 0 && <p className="font-bold mb-1">{likes.length} likes</p>}
         <p>
           <span className="font-bold">{username} </span>
           {caption}
