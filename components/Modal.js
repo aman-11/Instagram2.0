@@ -1,15 +1,72 @@
+/* eslint-disable @next/next/no-img-element */
 import { useRecoilState } from "recoil";
 import { modalState } from "../atoms/modalAtoms";
 import { Dialog, Transition } from "@headlessui/react";
 import { Fragment, useRef, useState } from "react";
 import { CameraIcon } from "@heroicons/react/outline";
+import { db, storage } from "../firebase";
+import {
+  addDoc,
+  collection,
+  serverTimestamp,
+  updateDoc,
+  doc,
+} from "firebase/firestore";
+import { useSession } from "next-auth/react";
+import { ref, getDownloadURL, uploadString } from "firebase/storage";
 
 function Modal() {
+  const { data: session } = useSession();
   const [open, setOpen] = useRecoilState(modalState);
   const [selectedFile, setSelectedFile] = useState(null);
   const filePickerRef = useRef(null);
+  const captionRef = useRef(null);
+  const [loading, setLoading] = useState(false);
 
-  const addImageToPost = (e) => {};
+  //upload to firebase
+  const uploadPost = async () => {
+    if (loading) return;
+
+    setLoading(true);
+
+    //TODO 1. create a post and add to firestore 'posts' collection
+    const docRef = await addDoc(collection(db, "posts"), {
+      username: session.user.username,
+      caption: captionRef.current.value,
+      profileImg: session.user.image,
+      timestamp: serverTimestamp(),
+    });
+
+    //TODO 2. get the post ID for the newly created post
+    console.log("new post addded to firestore", docRef.id);
+
+    //TODO 3. upload the imge to firebase storage with post ID
+    const imageRef = ref(storage, `posts/${docRef.id}/image`);
+    await uploadString(imageRef, selectedFile, "data_url").then(
+      async (snapshot) => {
+        const downloadURL = await getDownloadURL(imageRef);
+
+        //TODO 4. get the downlaod url from the storage and update to original post
+        await updateDoc(doc(db, "posts", docRef.id), {
+          image: downloadURL,
+        });
+      }
+    );
+
+    setOpen(false);
+    setLoading(false);
+    setSelectedFile(null);
+  };
+
+  const addImageToPost = (e) => {
+    const reader = new FileReader();
+    if (e.target.files[0]) {
+      reader.readAsDataURL(e.target.files[0]);
+    }
+    reader.onload = (readerEvent) => {
+      setSelectedFile(readerEvent.target.result);
+    };
+  };
 
   return (
     <Transition.Root show={open} as={Fragment}>
@@ -50,15 +107,24 @@ function Modal() {
                 shadow-xl transform transition-all sm:my-8 sm:align-middle sm:max-w-sm sm:w-full sm:p-6 "
             >
               <div>
-                <div
-                  onClick={() => filePickerRef.current.click()}
-                  className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 cursor-pointer"
-                >
-                  <CameraIcon
-                    className="h-6 w-6 text-red-600"
-                    aria-hidden="true"
+                {selectedFile ? (
+                  <img
+                    className="w-full object-contain cursor-pointer"
+                    src={selectedFile}
+                    onClick={() => setSelectedFile(null)}
+                    alt=""
                   />
-                </div>
+                ) : (
+                  <div
+                    onClick={() => filePickerRef.current.click()}
+                    className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-red-100 cursor-pointer"
+                  >
+                    <CameraIcon
+                      className="h-6 w-6 text-red-600"
+                      aria-hidden="true"
+                    />
+                  </div>
+                )}
 
                 <div>
                   <div className="mt-3 text-center sm:mt-5">
@@ -82,6 +148,7 @@ function Modal() {
                       <input
                         className="border-none focus:ring-0 w-full text-center"
                         type="text"
+                        ref={captionRef}
                         placeholder="Please enter a caption ..."
                       />
                     </div>
@@ -89,8 +156,13 @@ function Modal() {
                 </div>
 
                 <div className="mt-5 sm:mt-6">
-                  <button className="uploadBtn" type="button">
-                    Upload Post
+                  <button
+                    onClick={uploadPost}
+                    disabled={!selectedFile}
+                    className="uploadBtn"
+                    type="button"
+                  >
+                    {loading ? "Uploading..." : "Upload Post"}
                   </button>
                 </div>
               </div>
